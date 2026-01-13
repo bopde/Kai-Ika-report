@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Marine Abundance Daily Report</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        // Simple storage wrapper
+        const storage = {
+            get: (key) => {
+                try {
+                    return localStorage.getItem(key);
+                } catch (e) {
+                    return null;
+                }
+            },
+            set: (key, value) => {
+                try {
+                    localStorage.setItem(key, value);
+                    return true;
+                } catch (e) {
+                    return false;
+                }
+            }
+        };
+
+        // Icon components
+        const Icon = ({ d, size = 20 }) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                {d}
+            </svg>
+        );
+
+        const MarineDailyReport = () => {
+            const [currentDate, setCurrentDate] = useState(new Date().toISOString().split('T')[0]);
+            const [totalSales, setTotalSales] = useState('');
+            const [products, setProducts] = useState([{ name: '', quantity: '' }]);
+            const [staff, setStaff] = useState([{ name: '', task: 'Filleting', hours: '' }]);
+            const [binsGenerated, setBinsGenerated] = useState('');
+            const [binsDistributed, setBinsDistributed] = useState('');
+            const [entries, setEntries] = useState([]);
+            const [showSetup, setShowSetup] = useState(false);
+            const [apiKey, setApiKey] = useState('');
+            const [spreadsheetId, setSpreadsheetId] = useState('');
+            const [isConfigured, setIsConfigured] = useState(false);
+            const [loading, setLoading] = useState(false);
+
+            const tasks = ['Filleting', 'Distribution', 'Admin', 'Cleaning', 'Other'];
+
+            useEffect(() => {
+                loadConfig();
+            }, []);
+
+            useEffect(() => {
+                if (isConfigured) {
+                    loadEntries();
+                }
+            }, [isConfigured]);
+
+            const loadConfig = () => {
+                const savedApiKey = storage.get('marine_apiKey');
+                const savedSpreadsheetId = storage.get('marine_spreadsheetId');
+                
+                if (savedApiKey && savedSpreadsheetId) {
+                    setApiKey(savedApiKey);
+                    setSpreadsheetId(savedSpreadsheetId);
+                    setIsConfigured(true);
+                } else {
+                    setShowSetup(true);
+                }
+            };
+
+            const saveConfig = () => {
+                if (!apiKey || !spreadsheetId) {
+                    alert('Please enter both API Key and Spreadsheet ID');
+                    return;
+                }
+
+                storage.set('marine_apiKey', apiKey);
+                storage.set('marine_spreadsheetId', spreadsheetId);
+                setIsConfigured(true);
+                setShowSetup(false);
+                loadEntries();
+            };
+
+            const loadEntries = async () => {
+                if (!isConfigured || !spreadsheetId || !apiKey) return;
+
+                setLoading(true);
+                try {
+                    const response = await fetch(
+                        `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/DailyReports!A2:J?key=${apiKey}`
+                    );
+
+                    if (!response.ok) {
+                        throw new Error('Failed to load data');
+                    }
+
+                    const data = await response.json();
+                    
+                    if (data.values && data.values.length > 0) {
+                        const parsedEntries = parseSheetData(data.values);
+                        setEntries(parsedEntries);
+                    } else {
+                        setEntries([]);
+                    }
+                } catch (error) {
+                    console.error('Error loading entries:', error);
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            const parseSheetData = (rows) => {
+                const entriesMap = new Map();
+
+                rows.forEach(row => {
+                    const [date, sales, productName, productQty, staffName, task, hours, binsGen, binsDist] = row;
+                    
+                    if (!date) return;
+
+                    if (!entriesMap.has(date)) {
+                        entriesMap.set(date, {
+                            date,
+                            totalSales: parseFloat(sales) || 0,
+                            products: [],
+                            staff: [],
+                            binsGenerated: parseInt(binsGen) || 0,
+                            binsDistributed: parseInt(binsDist) || 0
+                        });
+                    }
+
+                    const entry = entriesMap.get(date);
+
+                    if (productName && productQty) {
+                        const exists = entry.products.find(p => p.name === productName);
+                        if (!exists) {
+                            entry.products.push({ name: productName, quantity: productQty });
+                        }
+                    }
+
+                    if (staffName && hours) {
+                        const exists = entry.staff.find(s => s.name === staffName && s.task === task);
+                        if (!exists) {
+                            entry.staff.push({ name: staffName, task: task || 'Filleting', hours: hours });
+                        }
+                    }
+                });
+
+                return Array.from(entriesMap.values()).sort((a, b) => 
+                    new Date(b.date) - new Date(a.date)
+                );
+            };
+
+            const saveEntry = async () => {
+                if (!isConfigured) {
+                    alert('Please configure Google Sheets first');
+                    setShowSetup(true);
+                    return;
+                }
+
+                const filteredProducts = products.filter(p => p.name && p.quantity);
+                const filteredStaff = staff.filter(s => s.name && s.hours);
+
+                if (!totalSales && filteredProducts.length === 0 && filteredStaff.length === 0) {
+                    alert('Please enter at least some data before saving');
+                    return;
+                }
+
+                setLoading(true);
+
+                const rows = [];
+                const maxRows = Math.max(filteredProducts.length, filteredStaff.length, 1);
+
+                for (let i = 0; i < maxRows; i++) {
+                    const product = filteredProducts[i] || {};
+                    const staffMember = filteredStaff[i] || {};
+
+                    rows.push([
+                        currentDate,
+                        i === 0 ? (parseFloat(totalSales) || 0) : '',
+                        product.name || '',
+                        product.quantity || '',
+                        staffMember.name || '',
+                        staffMember.task || '',
+                        staffMember.hours || '',
+                        i === 0 ? (parseInt(binsGenerated) || 0) : '',
+                        i === 0 ? (parseInt(binsDistributed) || 0) : ''
+                    ]);
+                }
+
+                try {
+                    const response = await fetch(
+                        `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/DailyReports!A2:I:append?valueInputOption=USER_ENTERED&key=${apiKey}`,
+                        {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ values: rows })
+                        }
+                    );
+
+                    if (!response.ok) throw new Error('Save failed');
+
+                    alert('Saved successfully!');
+                    
+                    setTotalSales('');
+                    setProducts([{ name: '', quantity: '' }]);
+                    setStaff([{ name: '', task: 'Filleting', hours: '' }]);
+                    setBinsGenerated('');
+                    setBinsDistributed('');
+                    
+                    await loadEntries();
+                } catch (error) {
+                    alert('Error saving. Check your configuration.');
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            const getTotalHours = (entry) => {
+                return entry.staff?.reduce((sum, s) => sum + (parseFloat(s.hours) || 0), 0) || 0;
+            };
+
+            if (showSetup) {
+                return (
+                    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-cyan-50 p-4 flex items-center justify-center">
+                        <div className="bg-white rounded-lg shadow-lg p-8 max-w-2xl w-full">
+                            <h1 className="text-3xl font-bold text-blue-900 mb-2">Setup Google Sheets</h1>
+                            <p className="text-gray-600 mb-6">Connect your Google Sheet to get started</p>
+                            
+                            <div className="space-y-6">
+                                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                                    <h3 className="font-bold text-blue-900 mb-2">Step 1: Create Google Sheet</h3>
+                                    <ol className="list-decimal list-inside space-y-1 text-sm text-gray-700">
+                                        <li>Create a new Google Sheet</li>
+                                        <li>Name the first tab "DailyReports"</li>
+                                        <li>Add headers: Date | Total Sales | Product Name | Quantity | Staff Name | Task | Hours | Bins Generated | Bins Distributed</li>
+                                        <li>Share: "Anyone with link can view"</li>
+                                        <li>Copy the Sheet ID from URL (between /d/ and /edit)</li>
+                                    </ol>
+                                </div>
+
+                                <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                                    <h3 className="font-bold text-green-900 mb-2">Step 2: Get API Key</h3>
+                                    <ol className="list-decimal list-inside space-y-1 text-sm text-gray-700">
+                                        <li>Go to console.cloud.google.com</li>
+                                        <li>Create/select a project</li>
+                                        <li>Enable "Google Sheets API"</li>
+                                        <li>Create API Key in Credentials</li>
+                                    </ol>
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">API Key</label>
+                                    <input
+                                        type="text"
+                                        value={apiKey}
+                                        onChange={(e) => setApiKey(e.target.value)}
+                                        placeholder="AIza..."
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Spreadsheet ID</label>
+                                    <input
+                                        type="text"
+                                        value={spreadsheetId}
+                                        onChange={(e) => setSpreadsheetId(e.target.value)}
+                                        placeholder="1BxiMVs0XRA5nFMdKv..."
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                                    />
+                                </div>
+
+                                <button
+                                    onClick={saveConfig}
+                                    className="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700"
+                                >
+                                    Save & Continue
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            return (
+                <div className="min-h-screen bg-gradient-to-br from-blue-50 to-cyan-50 p-4">
+                    <div className="max-w-6xl mx-auto">
+                        <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
+                            <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
+                                <div>
+                                    <h1 className="text-3xl font-bold text-blue-900">Marine Abundance Daily Report</h1>
+                                    <p className="text-gray-600 mt-1">Fish filleting & distribution tracking</p>
+                                </div>
+                                <div className="flex gap-2">
+                                    <button
+                                        onClick={() => setShowSetup(true)}
+                                        className="bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700"
+                                    >
+                                        Settings
+                                    </button>
+                                    {spreadsheetId && (
+                                        <a
+                                            href={`https://docs.google.com/spreadsheets/d/${spreadsheetId}`}
+                                            target="_blank"
+                                            className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700"
+                                        >
+                                            View Sheet
+                                        </a>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">Date</label>
+                                        <input
+                                            type="date"
+                                            value={currentDate}
+                                            onChange={(e) => setCurrentDate(e.target.value)}
+                                            className="w-full px-3 py-2 border rounded-lg"
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">Total Sales ($)</label>
+                                        <input
+                                            type="number"
+                                            step="0.01"
+                                            value={totalSales}
+                                            onChange={(e) => setTotalSales(e.target.value)}
+                                            placeholder="0.00"
+                                            className="w-full px-3 py-2 border rounded-lg"
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <div className="flex justify-between mb-2">
+                                            <label className="text-sm font-medium text-gray-700">Products Sold</label>
+                                            <button
+                                                onClick={() => setProducts([...products, { name: '', quantity: '' }])}
+                                                className="text-blue-600 text-sm hover:text-blue-700"
+                                            >
+                                                + Add Product
+                                            </button>
+                                        </div>
+                                        <div className="space-y-2">
+                                            {products.map((product, i) => (
+                                                <div key={i} className="flex gap-2">
+                                                    <input
+                                                        type="text"
+                                                        value={product.name}
+                                                        onChange={(e) => {
+                                                            const updated = [...products];
+                                                            updated[i].name = e.target.value;
+                                                            setProducts(updated);
+                                                        }}
+                                                        placeholder="Product name"
+                                                        className="flex-1 px-3 py-2 border rounded-lg"
+                                                    />
+                                                    <input
+                                                        type="number"
+                                                        value={product.quantity}
+                                                        onChange={(e) => {
+                                                            const updated = [...products];
+                                                            updated[i].quantity = e.target.value;
+                                                            setProducts(updated);
+                                                        }}
+                                                        placeholder="Qty"
+                                                        className="w-24 px-3 py-2 border rounded-lg"
+                                                    />
+                                                    <button
+                                                        onClick={() => setProducts(products.filter((_, idx) => idx !== i))}
+                                                        className="text-red-600 hover:text-red-700 px-2"
+                                                    >
+                                                        ✕
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-4">
+                                    <div>
+                                        <div className="flex justify-between mb-2">
+                                            <label className="text-sm font-medium text-gray-700">Staff & Volunteers</label>
+                                            <button
+                                                onClick={() => setStaff([...staff, { name: '', task: 'Filleting', hours: '' }])}
+                                                className="text-blue-600 text-sm hover:text-blue-700"
+                                            >
+                                                + Add Staff
+                                            </button>
+                                        </div>
+                                        <div className="space-y-2 max-h-64 overflow-y-auto">
+                                            {staff.map((member, i) => (
+                                                <div key={i} className="flex gap-2">
+                                                    <input
+                                                        type="text"
+                                                        value={member.name}
+                                                        onChange={(e) => {
+                                                            const updated = [...staff];
+                                                            updated[i].name = e.target.value;
+                                                            setStaff(updated);
+                                                        }}
+                                                        placeholder="Name"
+                                                        className="flex-1 px-3 py-2 border rounded-lg"
+                                                    />
+                                                    <select
+                                                        value={member.task}
+                                                        onChange={(e) => {
+                                                            const updated = [...staff];
+                                                            updated[i].task = e.target.value;
+                                                            setStaff(updated);
+                                                        }}
+                                                        className="px-3 py-2 border rounded-lg"
+                                                    >
+                                                        {tasks.map(t => <option key={t}>{t}</option>)}
+                                                    </select>
+                                                    <input
+                                                        type="number"
+                                                        step="0.5"
+                                                        value={member.hours}
+                                                        onChange={(e) => {
+                                                            const updated = [...staff];
+                                                            updated[i].hours = e.target.value;
+                                                            setStaff(updated);
+                                                        }}
+                                                        placeholder="Hrs"
+                                                        className="w-20 px-3 py-2 border rounded-lg"
+                                                    />
+                                                    <button
+                                                        onClick={() => setStaff(staff.filter((_, idx) => idx !== i))}
+                                                        className="text-red-600 hover:text-red-700 px-2"
+                                                    >
+                                                        ✕
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-2">Bins Generated</label>
+                                            <input
+                                                type="number"
+                                                value={binsGenerated}
+                                                onChange={(e) => setBinsGenerated(e.target.value)}
+                                                placeholder="0"
+                                                className="w-full px-3 py-2 border rounded-lg"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-2">Bins Distributed</label>
+                                            <input
+                                                type="number"
+                                                value={binsDistributed}
+                                                onChange={(e) => setBinsDistributed(e.target.value)}
+                                                placeholder="0"
+                                                className="w-full px-3 py-2 border rounded-lg"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <button
+                                onClick={saveEntry}
+                                disabled={loading}
+                                className="w-full mt-6 bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 disabled:bg-gray-400 font-medium text-lg"
+                            >
+                                {loading ? 'Saving...' : 'Save to Google Sheets'}
+                            </button>
+                        </div>
+
+                        <div className="bg-white rounded-lg shadow-lg p-6">
+                            <h2 className="text-2xl font-bold text-blue-900 mb-4">Recent Entries</h2>
+                            {loading ? (
+                                <p className="text-center py-8 text-gray-500">Loading...</p>
+                            ) : entries.length === 0 ? (
+                                <p className="text-center py-8 text-gray-500">No entries yet</p>
+                            ) : (
+                                <div className="space-y-4">
+                                    {entries.slice(0, 10).map((entry, idx) => (
+                                        <div key={idx} className="border rounded-lg p-4">
+                                            <div className="mb-3">
+                                                <h3 className="font-bold text-lg text-blue-900">{entry.date}</h3>
+                                                <p className="text-sm text-gray-500">Sales: ${entry.totalSales.toFixed(2)}</p>
+                                            </div>
+                                            
+                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                                                <div>
+                                                    <h4 className="font-semibold text-gray-700 mb-1">Products</h4>
+                                                    {entry.products?.length > 0 ? (
+                                                        <ul className="space-y-1">
+                                                            {entry.products.map((p, i) => (
+                                                                <li key={i} className="text-gray-600">{p.name}: {p.quantity}</li>
+                                                            ))}
+                                                        </ul>
+                                                    ) : (
+                                                        <p className="text-gray-400">None</p>
+                                                    )}
+                                                </div>
+                                                
+                                                <div>
+                                                    <h4 className="font-semibold text-gray-700 mb-1">Staff ({getTotalHours(entry)}h)</h4>
+                                                    {entry.staff?.length > 0 ? (
+                                                        <ul className="space-y-1">
+                                                            {entry.staff.map((s, i) => (
+                                                                <li key={i} className="text-gray-600">{s.name} - {s.task}: {s.hours}h</li>
+                                                            ))}
+                                                        </ul>
+                                                    ) : (
+                                                        <p className="text-gray-400">None</p>
+                                                    )}
+                                                </div>
+                                                
+                                                <div>
+                                                    <h4 className="font-semibold text-gray-700 mb-1">Bins</h4>
+                                                    <p className="text-gray-600">Generated: {entry.binsGenerated}</p>
+                                                    <p className="text-gray-600">Distributed: {entry.binsDistributed}</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        ReactDOM.render(<MarineDailyReport />, document.getElementById('root'));
+    </script>
+</body>
+</html>
