@@ -13,9 +13,8 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect } = React;
+        const { useState, useEffect, useRef } = React;
 
-        // Simple storage wrapper
         const storage = {
             get: (key) => {
                 try {
@@ -47,11 +46,22 @@
             const [spreadsheetId, setSpreadsheetId] = useState('');
             const [isConfigured, setIsConfigured] = useState(false);
             const [loading, setLoading] = useState(false);
+            const [showSuccess, setShowSuccess] = useState(false);
+            const formRef = useRef(null);
 
             const tasks = ['Filleting', 'Distribution', 'Admin', 'Cleaning', 'Other'];
 
             useEffect(() => {
                 loadConfig();
+                
+                // Check for success parameter in URL
+                const urlParams = new URLSearchParams(window.location.search);
+                if (urlParams.get('success') === 'true') {
+                    setShowSuccess(true);
+                    setTimeout(() => setShowSuccess(false), 5000);
+                    // Clear the URL parameter
+                    window.history.replaceState({}, '', window.location.pathname);
+                }
             }, []);
 
             useEffect(() => {
@@ -155,7 +165,9 @@
                 );
             };
 
-            const saveEntry = async () => {
+            const handleSubmit = (e) => {
+                e.preventDefault();
+                
                 if (!isConfigured) {
                     alert('Please configure the app first');
                     setShowSetup(true);
@@ -170,56 +182,8 @@
                     return;
                 }
 
-                setLoading(true);
-
-                const rows = [];
-                const maxRows = Math.max(filteredProducts.length, filteredStaff.length, 1);
-
-                for (let i = 0; i < maxRows; i++) {
-                    const product = filteredProducts[i] || {};
-                    const staffMember = filteredStaff[i] || {};
-
-                    rows.push([
-                        currentDate,
-                        i === 0 ? (parseFloat(totalSales) || 0) : '',
-                        product.name || '',
-                        product.quantity || '',
-                        staffMember.name || '',
-                        staffMember.task || '',
-                        staffMember.hours || '',
-                        i === 0 ? (parseInt(binsGenerated) || 0) : '',
-                        i === 0 ? (parseInt(binsDistributed) || 0) : ''
-                    ]);
-                }
-
-                try {
-                    const response = await fetch(webAppUrl, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ rows: rows })
-                    });
-
-                    const data = await response.json();
-
-                    if (data.error) {
-                        throw new Error(data.error);
-                    }
-
-                    alert('Saved successfully to Google Sheets!');
-                    
-                    setTotalSales('');
-                    setProducts([{ name: '', quantity: '' }]);
-                    setStaff([{ name: '', task: 'Filleting', hours: '' }]);
-                    setBinsGenerated('');
-                    setBinsDistributed('');
-                    
-                    await loadEntries();
-                } catch (error) {
-                    console.error('Save error:', error);
-                    alert('Error saving. Please check your configuration and try again.');
-                } finally {
-                    setLoading(false);
-                }
+                // The form will submit naturally
+                return true;
             };
 
             const getTotalHours = (entry) => {
@@ -249,6 +213,7 @@
                                     <ol className="list-decimal list-inside space-y-1 text-sm text-gray-700">
                                         <li>In your sheet: Extensions → Apps Script</li>
                                         <li>Paste the provided script code</li>
+                                        <li>Update YOUR-GITHUB-USERNAME in the script</li>
                                         <li>Deploy → New deployment → Web app</li>
                                         <li>Execute as: Me, Who has access: Anyone</li>
                                         <li>Copy the Web App URL</li>
@@ -292,6 +257,12 @@
             return (
                 <div className="min-h-screen bg-gradient-to-br from-blue-50 to-cyan-50 p-4">
                     <div className="max-w-6xl mx-auto">
+                        {showSuccess && (
+                            <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded-lg mb-4">
+                                ✓ Data saved successfully to Google Sheets!
+                            </div>
+                        )}
+
                         <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
                             <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
                                 <div>
@@ -317,172 +288,217 @@
                                 </div>
                             </div>
 
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                <div className="space-y-4">
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-2">Date</label>
-                                        <input
-                                            type="date"
-                                            value={currentDate}
-                                            onChange={(e) => setCurrentDate(e.target.value)}
-                                            className="w-full px-3 py-2 border rounded-lg"
-                                        />
-                                    </div>
-
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-2">Total Sales ($)</label>
-                                        <input
-                                            type="number"
-                                            step="0.01"
-                                            value={totalSales}
-                                            onChange={(e) => setTotalSales(e.target.value)}
-                                            placeholder="0.00"
-                                            className="w-full px-3 py-2 border rounded-lg"
-                                        />
-                                    </div>
-
-                                    <div>
-                                        <div className="flex justify-between mb-2">
-                                            <label className="text-sm font-medium text-gray-700">Products Sold</label>
-                                            <button
-                                                onClick={() => setProducts([...products, { name: '', quantity: '' }])}
-                                                className="text-blue-600 text-sm hover:text-blue-700"
-                                            >
-                                                + Add Product
-                                            </button>
+                            <form ref={formRef} onSubmit={handleSubmit} action={webAppUrl} method="POST" target="_self">
+                                <input type="hidden" name="redirectUrl" value={window.location.href.split('?')[0]} />
+                                
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <div className="space-y-4">
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-2">Date</label>
+                                            <input
+                                                type="date"
+                                                name="date"
+                                                value={currentDate}
+                                                onChange={(e) => setCurrentDate(e.target.value)}
+                                                required
+                                                className="w-full px-3 py-2 border rounded-lg"
+                                            />
                                         </div>
-                                        <div className="space-y-2">
-                                            {products.map((product, i) => (
-                                                <div key={i} className="flex gap-2">
-                                                    <input
-                                                        type="text"
-                                                        value={product.name}
-                                                        onChange={(e) => {
-                                                            const updated = [...products];
-                                                            updated[i].name = e.target.value;
-                                                            setProducts(updated);
-                                                        }}
-                                                        placeholder="Product name"
-                                                        className="flex-1 px-3 py-2 border rounded-lg"
-                                                    />
-                                                    <input
-                                                        type="number"
-                                                        value={product.quantity}
-                                                        onChange={(e) => {
-                                                            const updated = [...products];
-                                                            updated[i].quantity = e.target.value;
-                                                            setProducts(updated);
-                                                        }}
-                                                        placeholder="Qty"
-                                                        className="w-24 px-3 py-2 border rounded-lg"
-                                                    />
-                                                    <button
-                                                        onClick={() => setProducts(products.filter((_, idx) => idx !== i))}
-                                                        className="text-red-600 hover:text-red-700 px-2"
-                                                    >
-                                                        ✕
-                                                    </button>
-                                                </div>
-                                            ))}
+
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-2">Total Sales ($)</label>
+                                            <input
+                                                type="number"
+                                                name="totalSales"
+                                                step="0.01"
+                                                value={totalSales}
+                                                onChange={(e) => setTotalSales(e.target.value)}
+                                                placeholder="0.00"
+                                                className="w-full px-3 py-2 border rounded-lg"
+                                            />
+                                        </div>
+
+                                        <div>
+                                            <div className="flex justify-between mb-2">
+                                                <label className="text-sm font-medium text-gray-700">Products Sold</label>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setProducts([...products, { name: '', quantity: '' }])}
+                                                    className="text-blue-600 text-sm hover:text-blue-700"
+                                                >
+                                                    + Add Product
+                                                </button>
+                                            </div>
+                                            <div className="space-y-2">
+                                                {products.map((product, i) => (
+                                                    <div key={i} className="flex gap-2">
+                                                        <input
+                                                            type="text"
+                                                            value={product.name}
+                                                            onChange={(e) => {
+                                                                const updated = [...products];
+                                                                updated[i].name = e.target.value;
+                                                                setProducts(updated);
+                                                            }}
+                                                            placeholder="Product name"
+                                                            className="flex-1 px-3 py-2 border rounded-lg"
+                                                        />
+                                                        <input
+                                                            type="number"
+                                                            value={product.quantity}
+                                                            onChange={(e) => {
+                                                                const updated = [...products];
+                                                                updated[i].quantity = e.target.value;
+                                                                setProducts(updated);
+                                                            }}
+                                                            placeholder="Qty"
+                                                            className="w-24 px-3 py-2 border rounded-lg"
+                                                        />
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setProducts(products.filter((_, idx) => idx !== i))}
+                                                            className="text-red-600 hover:text-red-700 px-2"
+                                                        >
+                                                            ✕
+                                                        </button>
+                                                    </div>
+                                                ))}
+                                                <input 
+                                                    type="hidden" 
+                                                    name="productNames" 
+                                                    value={products.map(p => p.name).filter(Boolean).join('|||')} 
+                                                />
+                                                <input 
+                                                    type="hidden" 
+                                                    name="productQtys" 
+                                                    value={products.map(p => p.quantity).filter(Boolean).join('|||')} 
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-4">
+                                        <div>
+                                            <div className="flex justify-between mb-2">
+                                                <label className="text-sm font-medium text-gray-700">Staff & Volunteers</label>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setStaff([...staff, { name: '', task: 'Filleting', hours: '' }])}
+                                                    className="text-blue-600 text-sm hover:text-blue-700"
+                                                >
+                                                    + Add Staff
+                                                </button>
+                                            </div>
+                                            <div className="space-y-2 max-h-64 overflow-y-auto">
+                                                {staff.map((member, i) => (
+                                                    <div key={i} className="flex gap-2">
+                                                        <input
+                                                            type="text"
+                                                            value={member.name}
+                                                            onChange={(e) => {
+                                                                const updated = [...staff];
+                                                                updated[i].name = e.target.value;
+                                                                setStaff(updated);
+                                                            }}
+                                                            placeholder="Name"
+                                                            className="flex-1 px-3 py-2 border rounded-lg"
+                                                        />
+                                                        <select
+                                                            value={member.task}
+                                                            onChange={(e) => {
+                                                                const updated = [...staff];
+                                                                updated[i].task = e.target.value;
+                                                                setStaff(updated);
+                                                            }}
+                                                            className="px-3 py-2 border rounded-lg"
+                                                        >
+                                                            {tasks.map(t => <option key={t}>{t}</option>)}
+                                                        </select>
+                                                        <input
+                                                            type="number"
+                                                            step="0.5"
+                                                            value={member.hours}
+                                                            onChange={(e) => {
+                                                                const updated = [...staff];
+                                                                updated[i].hours = e.target.value;
+                                                                setStaff(updated);
+                                                            }}
+                                                            placeholder="Hrs"
+                                                            className="w-20 px-3 py-2 border rounded-lg"
+                                                        />
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setStaff(staff.filter((_, idx) => idx !== i))}
+                                                            className="text-red-600 hover:text-red-700 px-2"
+                                                        >
+                                                            ✕
+                                                        </button>
+                                                    </div>
+                                                ))}
+                                                <input 
+                                                    type="hidden" 
+                                                    name="staffNames" 
+                                                    value={staff.map(s => s.name).filter(Boolean).join('|||')} 
+                                                />
+                                                <input 
+                                                    type="hidden" 
+                                                    name="staffTasks" 
+                                                    value={staff.map(s => s.task).filter(Boolean).join('|||')} 
+                                                />
+                                                <input 
+                                                    type="hidden" 
+                                                    name="staffHours" 
+                                                    value={staff.map(s => s.hours).filter(Boolean).join('|||')} 
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-2">Bins Generated</label>
+                                                <input
+                                                    type="number"
+                                                    name="binsGenerated"
+                                                    value={binsGenerated}
+                                                    onChange={(e) => setBinsGenerated(e.target.value)}
+                                                    placeholder="0"
+                                                    className="w-full px-3 py-2 border rounded-lg"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-2">Bins Distributed</label>
+                                                <input
+                                                    type="number"
+                                                    name="binsDistributed"
+                                                    value={binsDistributed}
+                                                    onChange={(e) => setBinsDistributed(e.target.value)}
+                                                    placeholder="0"
+                                                    className="w-full px-3 py-2 border rounded-lg"
+                                                />
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
 
-                                <div className="space-y-4">
-                                    <div>
-                                        <div className="flex justify-between mb-2">
-                                            <label className="text-sm font-medium text-gray-700">Staff & Volunteers</label>
-                                            <button
-                                                onClick={() => setStaff([...staff, { name: '', task: 'Filleting', hours: '' }])}
-                                                className="text-blue-600 text-sm hover:text-blue-700"
-                                            >
-                                                + Add Staff
-                                            </button>
-                                        </div>
-                                        <div className="space-y-2 max-h-64 overflow-y-auto">
-                                            {staff.map((member, i) => (
-                                                <div key={i} className="flex gap-2">
-                                                    <input
-                                                        type="text"
-                                                        value={member.name}
-                                                        onChange={(e) => {
-                                                            const updated = [...staff];
-                                                            updated[i].name = e.target.value;
-                                                            setStaff(updated);
-                                                        }}
-                                                        placeholder="Name"
-                                                        className="flex-1 px-3 py-2 border rounded-lg"
-                                                    />
-                                                    <select
-                                                        value={member.task}
-                                                        onChange={(e) => {
-                                                            const updated = [...staff];
-                                                            updated[i].task = e.target.value;
-                                                            setStaff(updated);
-                                                        }}
-                                                        className="px-3 py-2 border rounded-lg"
-                                                    >
-                                                        {tasks.map(t => <option key={t}>{t}</option>)}
-                                                    </select>
-                                                    <input
-                                                        type="number"
-                                                        step="0.5"
-                                                        value={member.hours}
-                                                        onChange={(e) => {
-                                                            const updated = [...staff];
-                                                            updated[i].hours = e.target.value;
-                                                            setStaff(updated);
-                                                        }}
-                                                        placeholder="Hrs"
-                                                        className="w-20 px-3 py-2 border rounded-lg"
-                                                    />
-                                                    <button
-                                                        onClick={() => setStaff(staff.filter((_, idx) => idx !== i))}
-                                                        className="text-red-600 hover:text-red-700 px-2"
-                                                    >
-                                                        ✕
-                                                    </button>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 mb-2">Bins Generated</label>
-                                            <input
-                                                type="number"
-                                                value={binsGenerated}
-                                                onChange={(e) => setBinsGenerated(e.target.value)}
-                                                placeholder="0"
-                                                className="w-full px-3 py-2 border rounded-lg"
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 mb-2">Bins Distributed</label>
-                                            <input
-                                                type="number"
-                                                value={binsDistributed}
-                                                onChange={(e) => setBinsDistributed(e.target.value)}
-                                                placeholder="0"
-                                                className="w-full px-3 py-2 border rounded-lg"
-                                            />
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <button
-                                onClick={saveEntry}
-                                disabled={loading}
-                                className="w-full mt-6 bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 disabled:bg-gray-400 font-medium text-lg"
-                            >
-                                {loading ? 'Saving...' : 'Save to Google Sheets'}
-                            </button>
+                                <button
+                                    type="submit"
+                                    className="w-full mt-6 bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 font-medium text-lg"
+                                >
+                                    Save to Google Sheets
+                                </button>
+                            </form>
                         </div>
 
                         <div className="bg-white rounded-lg shadow-lg p-6">
-                            <h2 className="text-2xl font-bold text-blue-900 mb-4">Recent Entries</h2>
+                            <div className="flex items-center justify-between mb-4">
+                                <h2 className="text-2xl font-bold text-blue-900">Recent Entries</h2>
+                                <button
+                                    onClick={loadEntries}
+                                    className="text-blue-600 hover:text-blue-700 text-sm"
+                                >
+                                    ↻ Refresh
+                                </button>
+                            </div>
                             {loading ? (
                                 <p className="text-center py-8 text-gray-500">Loading...</p>
                             ) : entries.length === 0 ? (
