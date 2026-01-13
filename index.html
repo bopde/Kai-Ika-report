@@ -14,11 +14,13 @@
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
 
-<body class="bg-gradient-to-br from-slate-50 to-cyan-50 font-sans">
+<body class="bg-gradient-to-br from-slate-50 to-cyan-50">
 <div id="root"></div>
 
 <script type="text/babel">
-const { useState } = React;
+const { useState, useEffect } = React;
+
+/* ---------- CONSTANT DATA ---------- */
 
 const PRODUCTS = [
   "Blue Nose (LG)","Blue Nose (Sml)","Coke","Coke Zero","Crispy batter",
@@ -29,11 +31,14 @@ const PRODUCTS = [
   "Marlin Sml","Panko batter","Shake n Bake batter","Knife sharpening",
   "Sistema 3.8L","Snapper","SNA Scale & Fillet","SNA Scale Gut & Gill",
   "SNA Scale only","Sprite","Tarakihi","Tempura Batter","Trevally",
-  "Tuna Lg","Tuna Med","Tuna SM","Other"
+  "Tuna Lg","Tuna Med","Tuna SM"
 ];
 
-const STAFF = ["Ben","Connor","Dave","Opu","Matt","Jay","Other"];
-const TASKS = ["Filleting","Distributions","Scotts","Cans","Other"];
+const STAFF = ["Ben","Connor","Dave","Opu","Matt","Jay"];
+
+const TASKS = ["Filleting","Distributions","Scotts","Cans"];
+
+/* ---------- APP ---------- */
 
 function App() {
   const [webAppUrl, setWebAppUrl] = useState(localStorage.getItem("webAppUrl") || "");
@@ -41,76 +46,103 @@ function App() {
 
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
-  const [error, setError] = useState("");
 
-  const [date, setDate] = useState(new Date().toISOString().slice(0,10));
-  const [totalSales, setTotalSales] = useState("");
-  const [binsGenerated, setBinsGenerated] = useState("");
-  const [binsDistributed, setBinsDistributed] = useState("");
+  const [date, setDate] = useState(localStorage.getItem("date") || new Date().toISOString().slice(0,10));
+  const [formCompletedBy, setFormCompletedBy] = useState(localStorage.getItem("formCompletedBy") || "");
+  const [totalSales, setTotalSales] = useState(localStorage.getItem("totalSales") || "");
+  const [binsGenerated, setBinsGenerated] = useState(localStorage.getItem("binsGenerated") || "");
+  const [binsDistributed, setBinsDistributed] = useState(localStorage.getItem("binsDistributed") || "");
 
-  const [products, setProducts] = useState([{ name:"", quantity:"", rowType:"PRODUCT" }]);
-  const [staff, setStaff] = useState([{ name:"", task:"Filleting", startTime:"", endTime:"", rowType:"STAFF" }]);
+  const [products, setProducts] = useState(JSON.parse(localStorage.getItem("products") || '[{"name":"","quantity":""}]'));
+  const [staff, setStaff] = useState(JSON.parse(localStorage.getItem("staff") || '[{"name":"","task":"Filleting","start":"","end":""}]'));
+
+  /* ---------- AUTOSAVE ---------- */
+  useEffect(() => {
+    localStorage.setItem("date", date);
+    localStorage.setItem("formCompletedBy", formCompletedBy);
+    localStorage.setItem("totalSales", totalSales);
+    localStorage.setItem("binsGenerated", binsGenerated);
+    localStorage.setItem("binsDistributed", binsDistributed);
+    localStorage.setItem("products", JSON.stringify(products));
+    localStorage.setItem("staff", JSON.stringify(staff));
+  }, [date, formCompletedBy, totalSales, binsGenerated, binsDistributed, products, staff]);
 
   /* ---------- SUBMIT ---------- */
   const submit = async e => {
     e.preventDefault();
     setLoading(true);
     setSuccess(false);
-    setError("");
-
-    if (!date) {
-      setError("Date is required");
-      setLoading(false);
-      return;
-    }
-
-    // Allow demo mode if no URL
-    if (!webAppUrl) {
-      setTimeout(()=>{
-        setSuccess(true);
-        setLoading(false);
-        setTimeout(()=>setSuccess(false), 3000);
-      }, 800);
-      return;
-    }
 
     try {
       const fd = new FormData();
-      fd.append("date", date);
-      fd.append("totalSales", totalSales);
-      fd.append("binsGenerated", binsGenerated);
-      fd.append("binsDistributed", binsDistributed);
 
-      fd.append("productNames", products.map(p=>p.name).join("|||"));
-      fd.append("productQtys", products.map(p=>p.quantity).join("|||"));
-      fd.append("productRowTypes", products.map(p=>p.rowType).join("|||"));
+      const timestamp = new Date().toISOString();
 
-      fd.append("staffNames", staff.map(s=>s.name).join("|||"));
-      fd.append("staffTasks", staff.map(s=>s.task).join("|||"));
-      fd.append("staffStartTimes", staff.map(s=>s.startTime).join("|||"));
-      fd.append("staffEndTimes", staff.map(s=>s.endTime).join("|||"));
-      fd.append("staffRowTypes", staff.map(s=>s.rowType).join("|||"));
+      // DAY row
+      fd.append("Row Type", "DAY");
+      fd.append("Date", date);
+      fd.append("Form Completed By", formCompletedBy);
+      fd.append("Submission Timestamp", timestamp);
+      fd.append("Total Sales", totalSales);
+      fd.append("Bins Generated", binsGenerated);
+      fd.append("Bins Distributed", binsDistributed);
+      fd.append("Product Name", "");
+      fd.append("Quantity", "");
+      fd.append("Staff Name", "");
+      fd.append("Task", "");
+      fd.append("Start Time", "");
+      fd.append("End Time", "");
+
+      // PRODUCT rows
+      products.forEach(p => {
+        fd.append("Row Type", "PRODUCT");
+        fd.append("Date", date);
+        fd.append("Form Completed By", formCompletedBy);
+        fd.append("Submission Timestamp", timestamp);
+        fd.append("Total Sales", "");
+        fd.append("Bins Generated", "");
+        fd.append("Bins Distributed", "");
+        fd.append("Product Name", p.name);
+        fd.append("Quantity", p.quantity);
+        fd.append("Staff Name", "");
+        fd.append("Task", "");
+        fd.append("Start Time", "");
+        fd.append("End Time", "");
+      });
+
+      // STAFF rows
+      staff.forEach(s => {
+        fd.append("Row Type", "STAFF");
+        fd.append("Date", date);
+        fd.append("Form Completed By", formCompletedBy);
+        fd.append("Submission Timestamp", timestamp);
+        fd.append("Total Sales", "");
+        fd.append("Bins Generated", "");
+        fd.append("Bins Distributed", "");
+        fd.append("Product Name", "");
+        fd.append("Quantity", "");
+        fd.append("Staff Name", s.name);
+        fd.append("Task", s.task);
+        fd.append("Start Time", s.start);
+        fd.append("End Time", s.end);
+      });
 
       const res = await fetch(webAppUrl, { method:"POST", body:fd });
-      const text = await res.text();
-      let json;
-      try { json = JSON.parse(text); } 
-      catch { throw new Error("Web app did not return valid JSON"); }
-
-      if (!json.success) throw new Error(json.error || "Unknown error from server");
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error);
 
       setSuccess(true);
-      setProducts([{ name:"", quantity:"", rowType:"PRODUCT" }]);
-      setStaff([{ name:"", task:"Filleting", startTime:"", endTime:"", rowType:"STAFF" }]);
+      setProducts([{ name:"", quantity:"" }]);
+      setStaff([{ name:"", task:"Filleting","start":"","end":"" }]);
       setTotalSales("");
       setBinsGenerated("");
       setBinsDistributed("");
+      setFormCompletedBy("");
 
-      setTimeout(()=>setSuccess(false), 3000);
+      localStorage.clear();
 
     } catch (err) {
-      console.error(err);
-      setError(err.message);
+      alert(err.message);
     } finally {
       setLoading(false);
     }
@@ -123,13 +155,13 @@ function App() {
         <div className="bg-white p-8 rounded-xl shadow-lg w-full max-w-lg">
           <h1 className="text-2xl font-bold mb-4">Initial Setup</h1>
           <input
-            className="w-full border rounded px-3 py-2 mb-4 focus:ring focus:ring-blue-200"
+            className="w-full border rounded px-3 py-2 mb-4"
             placeholder="Apps Script Web App URL"
             value={webAppUrl}
             onChange={e=>setWebAppUrl(e.target.value)}
           />
           <button
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded shadow"
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded"
             onClick={()=>{
               localStorage.setItem("webAppUrl", webAppUrl);
               setConfigured(true);
@@ -144,146 +176,71 @@ function App() {
 
   /* ---------- MAIN UI ---------- */
   return (
-    <div className="max-w-5xl mx-auto p-4 md:p-8 space-y-6 relative">
-
-      {/* SUCCESS POPUP */}
+    <div className="max-w-5xl mx-auto p-4 md:p-8 space-y-6">
       {success && (
-        <div className="fixed top-4 right-4 bg-green-500 text-white px-5 py-3 rounded-lg shadow-lg z-50 animate-slide-down">
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 bg-green-500 text-white font-semibold px-6 py-3 rounded shadow-lg z-50">
           ✓ Report saved successfully
         </div>
       )}
 
-      {/* ERROR POPUP */}
-      {error && (
-        <div className="fixed top-4 right-4 bg-red-500 text-white px-5 py-3 rounded-lg shadow-lg z-50 animate-slide-down">
-          ⚠ {error}
-        </div>
-      )}
+      <div className="bg-white rounded-2xl shadow-xl p-6 md:p-8 space-y-6">
 
-      {/* DAY SUMMARY - STICKY */}
-      <div className="bg-blue-50 border-l-4 border-blue-400 p-4 rounded-lg shadow-inner space-y-4 sticky top-4 z-20">
-        <h2 className="text-blue-700 font-semibold text-lg">DAY SUMMARY</h2>
-        <div className="grid md:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Date</label>
-            <input type="date" className="border rounded px-3 py-2 w-full focus:ring focus:ring-blue-200" value={date} onChange={e=>setDate(e.target.value)} />
+        <h1 className="text-3xl font-bold mb-6">Kai Ika Daily Report</h1>
+
+        <form onSubmit={submit} className="space-y-6">
+
+          {/* META */}
+          <div className="grid md:grid-cols-3 gap-4">
+            <input type="date" className="border rounded px-3 py-2 w-full" value={date} onChange={e=>setDate(e.target.value)} />
+            <input type="text" className="border rounded px-3 py-2 w-full" placeholder="Form Completed By" value={formCompletedBy} onChange={e=>setFormCompletedBy(e.target.value)} />
+            <input type="number" inputMode="numeric" step="0.01" placeholder="Total Sales ($)" className="border rounded px-3 py-2 w-full" value={totalSales} onChange={e=>setTotalSales(e.target.value)} />
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Total Sales ($)</label>
-            <input type="number" inputMode="numeric" step="0.01"
-              className="border rounded px-3 py-2 w-full focus:ring focus:ring-blue-200"
-              value={totalSales}
-              onChange={e=>setTotalSales(e.target.value)}
-            />
+
+          {/* BINS */}
+          <div className="grid md:grid-cols-2 gap-4">
+            <input type="number" inputMode="numeric" placeholder="Bins Generated" className="border rounded px-3 py-2 w-full" value={binsGenerated} onChange={e=>setBinsGenerated(e.target.value)} />
+            <input type="number" inputMode="numeric" placeholder="Bins Distributed" className="border rounded px-3 py-2 w-full" value={binsDistributed} onChange={e=>setBinsDistributed(e.target.value)} />
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Bins Generated</label>
-            <input type="number" inputMode="numeric"
-              className="border rounded px-3 py-2 w-full focus:ring focus:ring-blue-200"
-              value={binsGenerated}
-              onChange={e=>setBinsGenerated(e.target.value)}
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Bins Distributed</label>
-            <input type="number" inputMode="numeric"
-              className="border rounded px-3 py-2 w-full focus:ring focus:ring-blue-200"
-              value={binsDistributed}
-              onChange={e=>setBinsDistributed(e.target.value)}
-            />
-          </div>
-        </div>
+
+          {/* PRODUCTS */}
+          <section>
+            <h2 className="font-semibold mb-3">Products</h2>
+            {products.map((p,i)=>(
+              <div key={i} className="grid grid-cols-3 gap-2 mb-2 items-center">
+                <input list="products" className="border rounded px-3 py-2 col-span-2" placeholder="Product" value={p.name} onChange={e=>{ const x=[...products]; x[i].name=e.target.value; setProducts(x); }} />
+                <div className="flex gap-2">
+                  <input type="number" inputMode="numeric" className="border rounded px-3 py-2 w-full" placeholder="Qty" value={p.quantity} onChange={e=>{ const x=[...products]; x[i].quantity=e.target.value; setProducts(x); }} />
+                  {products.length > 1 && <button type="button" className="text-red-500 font-bold px-2" onClick={()=>setProducts(products.filter((_,idx)=>idx!==i))}>×</button>}
+                </div>
+              </div>
+            ))}
+            <button type="button" className="text-blue-600 mt-2" onClick={()=>setProducts([...products,{name:"",quantity:""}])}>+ Add Product</button>
+          </section>
+
+          {/* STAFF */}
+          <section>
+            <h2 className="font-semibold mb-3">Staff</h2>
+            {staff.map((s,i)=>(
+              <div key={i} className="grid md:grid-cols-4 gap-2 mb-2 items-center">
+                <input list="staff" className="border rounded px-3 py-2" placeholder="Name" value={s.name} onChange={e=>{ const x=[...staff]; x[i].name=e.target.value; setStaff(x); }} />
+                <select className="border rounded px-3 py-2" value={s.task} onChange={e=>{ const x=[...staff]; x[i].task=e.target.value; setStaff(x); }}>
+                  {TASKS.map(t=><option key={t}>{t}</option>)}
+                </select>
+                <input type="time" className="border rounded px-3 py-2" value={s.start} onChange={e=>{ const x=[...staff]; x[i].start=e.target.value; setStaff(x); }} />
+                <input type="time" className="border rounded px-3 py-2" value={s.end} onChange={e=>{ const x=[...staff]; x[i].end=e.target.value; setStaff(x); }} />
+                {staff.length > 1 && <button type="button" className="text-red-500 font-bold px-2" onClick={()=>setStaff(staff.filter((_,idx)=>idx!==i))}>×</button>}
+              </div>
+            ))}
+            <button type="button" className="text-blue-600 mt-2" onClick={()=>setStaff([...staff,{name:"",task:"Filleting",start:"",end:""}])}>+ Add Staff</button>
+          </section>
+
+          <button disabled={loading} className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white py-3 rounded-lg text-lg font-semibold">
+            {loading ? "Saving…" : "Save Report"}
+          </button>
+        </form>
       </div>
 
-      {/* PRODUCTS */}
-      <section className="bg-white p-4 rounded-lg shadow space-y-3">
-        <h2 className="font-semibold text-blue-600 text-lg">Products</h2>
-        {products.map((p,i)=>(
-          <div key={i} className="grid md:grid-cols-3 gap-2 transition-all duration-300">
-            <input list="products"
-              className="border rounded px-3 py-2 focus:ring focus:ring-blue-200 col-span-2 w-full"
-              placeholder="Product"
-              value={p.name}
-              onChange={e=>{
-                const x=[...products]; x[i].name=e.target.value; setProducts(x);
-              }}
-            />
-            <input type="number" inputMode="numeric"
-              className="border rounded px-3 py-2 focus:ring focus:ring-blue-200 w-full"
-              placeholder="Qty"
-              value={p.quantity}
-              onChange={e=>{
-                const x=[...products]; x[i].quantity=e.target.value; setProducts(x);
-              }}
-            />
-          </div>
-        ))}
-        <button type="button" className="text-blue-600 hover:underline" onClick={()=>setProducts([...products,{name:"",quantity:"", rowType:"PRODUCT"}])}>
-          + Add product
-        </button>
-      </section>
-
-      {/* STAFF */}
-      <section className="bg-white p-4 rounded-lg shadow space-y-3">
-        <h2 className="font-semibold text-blue-600 text-lg">Staff</h2>
-        {staff.map((s,i)=>(
-          <div key={i} className="grid md:grid-cols-5 gap-2 items-end transition-all duration-300">
-            <div>
-              <label className="block text-sm text-gray-700">Name</label>
-              <input list="staff"
-                className="border rounded px-3 py-2 w-full focus:ring focus:ring-blue-200"
-                placeholder="Name"
-                value={s.name}
-                onChange={e=>{
-                  const x=[...staff]; x[i].name=e.target.value; setStaff(x);
-                }}
-              />
-            </div>
-            <div>
-              <label className="block text-sm text-gray-700">Task</label>
-              <select className="border rounded px-3 py-2 w-full focus:ring focus:ring-blue-200"
-                value={s.task}
-                onChange={e=>{
-                  const x=[...staff]; x[i].task=e.target.value; setStaff(x);
-                }}
-              >
-                {TASKS.map(t=><option key={t}>{t}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm text-gray-700">Start</label>
-              <input type="time"
-                className="border rounded px-3 py-2 w-full focus:ring focus:ring-blue-200"
-                value={s.startTime}
-                onChange={e=>{
-                  const x=[...staff]; x[i].startTime=e.target.value; setStaff(x);
-                }}
-              />
-            </div>
-            <div>
-              <label className="block text-sm text-gray-700">End</label>
-              <input type="time"
-                className="border rounded px-3 py-2 w-full focus:ring focus:ring-blue-200"
-                value={s.endTime}
-                onChange={e=>{
-                  const x=[...staff]; x[i].endTime=e.target.value; setStaff(x);
-                }}
-              />
-            </div>
-          </div>
-        ))}
-        <button type="button" className="text-blue-600 hover:underline" onClick={()=>setStaff([...staff,{name:"",task:"Filleting",startTime:"",endTime:"", rowType:"STAFF"}])}>
-          + Add staff
-        </button>
-      </section>
-
-      <button disabled={loading}
-        className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white py-3 rounded-lg text-lg font-semibold shadow"
-        onClick={submit}
-      >
-        {loading ? "Saving…" : "Save Report"}
-      </button>
-
+      {/* DATA LISTS */}
       <datalist id="products">
         {PRODUCTS.map(p=><option key={p} value={p} />)}
       </datalist>
@@ -296,15 +253,5 @@ function App() {
 
 ReactDOM.render(<App />, document.getElementById("root"));
 </script>
-
-<style>
-@keyframes slide-down {
-  from { opacity: 0; transform: translateY(-20px);}
-  to { opacity: 1; transform: translateY(0);}
-}
-.animate-slide-down {
-  animation: slide-down 0.3s ease-out;
-}
-</style>
 </body>
 </html>
