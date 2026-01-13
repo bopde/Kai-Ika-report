@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Marine Abundance Daily Report</title>
 
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
@@ -10,7 +10,7 @@
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-slate-50">
+<body>
   <div id="root"></div>
 
 <script type="text/babel">
@@ -21,29 +21,51 @@ const storage = {
   set: (k,v) => localStorage.setItem(k,v)
 };
 
+const TASKS = ['Filleting', 'Distribution', 'Admin', 'Cleaning', 'Other'];
+
 function App() {
-  const [webAppUrl, setWebAppUrl] = useState('');
   const [configured, setConfigured] = useState(false);
+  const [webAppUrl, setWebAppUrl] = useState('');
+  const [spreadsheetId, setSpreadsheetId] = useState('');
+
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [entries, setEntries] = useState([]);
 
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
-  const [sales, setSales] = useState('');
-  const [binsGen, setBinsGen] = useState('');
-  const [binsDist, setBinsDist] = useState('');
+  const [totalSales, setTotalSales] = useState('');
+  const [binsGenerated, setBinsGenerated] = useState('');
+  const [binsDistributed, setBinsDistributed] = useState('');
 
-  const [products, setProducts] = useState([{name:'',qty:''}]);
-  const [staff, setStaff] = useState([{name:'',task:'Filleting',hours:''}]);
+  const [products, setProducts] = useState([{ name:'', quantity:'' }]);
+  const [staff, setStaff] = useState([{ name:'', task:'Filleting', hours:'' }]);
+
+  const [showSetup, setShowSetup] = useState(false);
 
   useEffect(() => {
-    const saved = storage.get('webAppUrl');
-    if (saved) {
-      setWebAppUrl(saved);
+    const url = storage.get('marine_webAppUrl');
+    const sheet = storage.get('marine_spreadsheetId');
+    if (url && sheet) {
+      setWebAppUrl(url);
+      setSpreadsheetId(sheet);
       setConfigured(true);
-      loadEntries(saved);
+      loadEntries(url);
+    } else {
+      setShowSetup(true);
     }
   }, []);
+
+  const saveConfig = () => {
+    if (!webAppUrl || !spreadsheetId) {
+      alert('Please enter both values');
+      return;
+    }
+    storage.set('marine_webAppUrl', webAppUrl);
+    storage.set('marine_spreadsheetId', spreadsheetId);
+    setConfigured(true);
+    setShowSetup(false);
+    loadEntries(webAppUrl);
+  };
 
   const loadEntries = async (url = webAppUrl) => {
     try {
@@ -63,16 +85,31 @@ function App() {
     try {
       const fd = new FormData();
       fd.append('date', date);
-      fd.append('totalSales', sales);
-      fd.append('binsGenerated', binsGen);
-      fd.append('binsDistributed', binsDist);
+      fd.append('totalSales', totalSales);
+      fd.append('binsGenerated', binsGenerated);
+      fd.append('binsDistributed', binsDistributed);
 
-      fd.append('productNames', products.filter(p=>p.name).map(p=>p.name).join('|||'));
-      fd.append('productQtys', products.filter(p=>p.qty).map(p=>p.qty).join('|||'));
+      fd.append(
+        'productNames',
+        products.filter(p=>p.name && p.quantity).map(p=>p.name).join('|||')
+      );
+      fd.append(
+        'productQtys',
+        products.filter(p=>p.name && p.quantity).map(p=>p.quantity).join('|||')
+      );
 
-      fd.append('staffNames', staff.filter(s=>s.name).map(s=>s.name).join('|||'));
-      fd.append('staffTasks', staff.filter(s=>s.task).map(s=>s.task).join('|||'));
-      fd.append('staffHours', staff.filter(s=>s.hours).map(s=>s.hours).join('|||'));
+      fd.append(
+        'staffNames',
+        staff.filter(s=>s.name && s.hours).map(s=>s.name).join('|||')
+      );
+      fd.append(
+        'staffTasks',
+        staff.filter(s=>s.name && s.hours).map(s=>s.task).join('|||')
+      );
+      fd.append(
+        'staffHours',
+        staff.filter(s=>s.name && s.hours).map(s=>s.hours).join('|||')
+      );
 
       const res = await fetch(webAppUrl, { method:'POST', body: fd });
       const json = await res.json();
@@ -80,11 +117,12 @@ function App() {
       if (!json.success) throw new Error(json.error);
 
       setSuccess(true);
-      setSales('');
-      setBinsGen('');
-      setBinsDist('');
-      setProducts([{name:'',qty:''}]);
-      setStaff([{name:'',task:'Filleting',hours:''}]);
+      setTotalSales('');
+      setBinsGenerated('');
+      setBinsDistributed('');
+      setProducts([{ name:'', quantity:'' }]);
+      setStaff([{ name:'', task:'Filleting', hours:'' }]);
+
       setTimeout(loadEntries, 800);
 
     } catch (err) {
@@ -94,51 +132,111 @@ function App() {
     }
   };
 
-  if (!configured) {
+  const groupedEntries = (() => {
+    const map = new Map();
+    entries.forEach(r => {
+      const [d,s,pn,pq,sn,task,h,bg,bd] = r;
+      if (!d) return;
+      if (!map.has(d)) {
+        map.set(d,{
+          date:d,
+          sales:s,
+          binsGen:bg,
+          binsDist:bd,
+          products:[],
+          staff:[]
+        });
+      }
+      const e = map.get(d);
+      if (pn && pq) e.products.push({pn,pq});
+      if (sn && h) e.staff.push({sn,task,h});
+    });
+    return Array.from(map.values()).sort((a,b)=>new Date(b.date)-new Date(a.date));
+  })();
+
+  if (showSetup) {
     return (
-      <div className="max-w-xl mx-auto p-6 mt-20 bg-white rounded shadow">
-        <h1 className="text-2xl font-bold mb-4">Setup</h1>
-        <input
-          className="w-full border p-2 mb-4"
-          placeholder="Paste Apps Script Web App URL"
-          value={webAppUrl}
-          onChange={e=>setWebAppUrl(e.target.value)}
-        />
-        <button
-          className="w-full bg-blue-600 text-white py-2 rounded"
-          onClick={()=>{
-            storage.set('webAppUrl', webAppUrl);
-            setConfigured(true);
-            loadEntries(webAppUrl);
-          }}
-        >
-          Save
-        </button>
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-cyan-50 p-4">
+        <div className="bg-white p-8 rounded-lg shadow max-w-xl w-full">
+          <h1 className="text-2xl font-bold mb-4">Setup</h1>
+          <input className="w-full border p-2 mb-3" placeholder="Apps Script Web App URL" value={webAppUrl} onChange={e=>setWebAppUrl(e.target.value)}/>
+          <input className="w-full border p-2 mb-4" placeholder="Spreadsheet ID" value={spreadsheetId} onChange={e=>setSpreadsheetId(e.target.value)}/>
+          <button className="w-full bg-blue-600 text-white py-2 rounded" onClick={saveConfig}>Save</button>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="max-w-4xl mx-auto p-6">
-      <h1 className="text-3xl font-bold mb-4">Marine Daily Report</h1>
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-cyan-50 p-4">
+      <div className="max-w-6xl mx-auto">
 
-      {success && <div className="bg-green-100 p-3 mb-4 rounded">Saved ✔</div>}
+        {success && <div className="bg-green-100 border border-green-400 p-3 rounded mb-4">✓ Saved successfully</div>}
 
-      <form onSubmit={submit} className="bg-white p-4 rounded shadow mb-6">
-        <input type="date" value={date} onChange={e=>setDate(e.target.value)} className="border p-2 mb-2 w-full"/>
-        <input type="number" placeholder="Total Sales" value={sales} onChange={e=>setSales(e.target.value)} className="border p-2 mb-2 w-full"/>
-        <input type="number" placeholder="Bins Generated" value={binsGen} onChange={e=>setBinsGen(e.target.value)} className="border p-2 mb-2 w-full"/>
-        <input type="number" placeholder="Bins Distributed" value={binsDist} onChange={e=>setBinsDist(e.target.value)} className="border p-2 mb-4 w-full"/>
+        <div className="bg-white p-6 rounded-lg shadow mb-6">
+          <h1 className="text-3xl font-bold mb-6">Marine Abundance Daily Report</h1>
 
-        <button disabled={loading} className="w-full bg-blue-600 text-white py-2 rounded">
-          {loading ? 'Saving…' : 'Save'}
-        </button>
-      </form>
+          <form onSubmit={submit} className="space-y-6">
 
-      <h2 className="text-xl font-bold mb-2">Recent Entries</h2>
-      <pre className="bg-white p-4 rounded shadow overflow-auto text-sm">
-        {JSON.stringify(entries.slice(-10), null, 2)}
-      </pre>
+            <div className="grid md:grid-cols-2 gap-6">
+              <input type="date" value={date} onChange={e=>setDate(e.target.value)} className="border p-2 rounded"/>
+              <input type="number" placeholder="Total Sales" value={totalSales} onChange={e=>setTotalSales(e.target.value)} className="border p-2 rounded"/>
+            </div>
+
+            <div>
+              <h3 className="font-semibold mb-2">Products</h3>
+              {products.map((p,i)=>(
+                <div key={i} className="flex gap-2 mb-2">
+                  <input className="border p-2 flex-1" placeholder="Product" value={p.name} onChange={e=>{const x=[...products];x[i].name=e.target.value;setProducts(x)}}/>
+                  <input className="border p-2 w-24" placeholder="Qty" value={p.quantity} onChange={e=>{const x=[...products];x[i].quantity=e.target.value;setProducts(x)}}/>
+                  <button type="button" onClick={()=>setProducts(products.filter((_,idx)=>idx!==i))}>✕</button>
+                </div>
+              ))}
+              <button type="button" className="text-blue-600" onClick={()=>setProducts([...products,{name:'',quantity:''}])}>+ Add product</button>
+            </div>
+
+            <div>
+              <h3 className="font-semibold mb-2">Staff</h3>
+              {staff.map((s,i)=>(
+                <div key={i} className="flex gap-2 mb-2">
+                  <input className="border p-2 flex-1" placeholder="Name" value={s.name} onChange={e=>{const x=[...staff];x[i].name=e.target.value;setStaff(x)}}/>
+                  <select className="border p-2" value={s.task} onChange={e=>{const x=[...staff];x[i].task=e.target.value;setStaff(x)}}>
+                    {TASKS.map(t=><option key={t}>{t}</option>)}
+                  </select>
+                  <input className="border p-2 w-20" placeholder="Hrs" value={s.hours} onChange={e=>{const x=[...staff];x[i].hours=e.target.value;setStaff(x)}}/>
+                  <button type="button" onClick={()=>setStaff(staff.filter((_,idx)=>idx!==i))}>✕</button>
+                </div>
+              ))}
+              <button type="button" className="text-blue-600" onClick={()=>setStaff([...staff,{name:'',task:'Filleting',hours:''}])}>+ Add staff</button>
+            </div>
+
+            <div className="grid md:grid-cols-2 gap-6">
+              <input type="number" placeholder="Bins Generated" value={binsGenerated} onChange={e=>setBinsGenerated(e.target.value)} className="border p-2 rounded"/>
+              <input type="number" placeholder="Bins Distributed" value={binsDistributed} onChange={e=>setBinsDistributed(e.target.value)} className="border p-2 rounded"/>
+            </div>
+
+            <button disabled={loading} className="w-full bg-blue-600 text-white py-3 rounded text-lg">
+              {loading ? 'Saving…' : 'Save Report'}
+            </button>
+
+          </form>
+        </div>
+
+        <div className="bg-white p-6 rounded-lg shadow">
+          <h2 className="text-2xl font-bold mb-4">Recent Entries</h2>
+          {groupedEntries.slice(0,5).map((e,i)=>(
+            <div key={i} className="border-b py-3">
+              <div className="font-semibold">{e.date} — ${e.sales}</div>
+              <div className="text-sm text-gray-600">
+                Products: {e.products.map(p=>`${p.pn} (${p.pq})`).join(', ') || 'None'}<br/>
+                Staff: {e.staff.map(s=>`${s.sn} ${s.task} ${s.h}h`).join(', ') || 'None'}<br/>
+                Bins: {e.binsGen}/{e.binsDist}
+              </div>
+            </div>
+          ))}
+        </div>
+
+      </div>
     </div>
   );
 }
