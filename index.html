@@ -54,7 +54,7 @@ const PRODUCTS = [
 ];
 
 const STAFF = ["Ben","Connor","Dave","Opu","Matt","Jay"];
-const TASKS = ["Filleting","Distributions","Scotts","Cans"];
+const TASKS = ["Filleting","Distributions","Scotts","Cans","Other"];
 const ROW_TYPES = ["DAY","PRODUCT","STAFF"];
 
 function App() {
@@ -63,18 +63,47 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
 
-  const [rows, setRows] = useState([
-    { rowType:"DAY", date:new Date().toISOString().slice(0,10), totalSales:"", binsGenerated:"", binsDistributed:"", formCompletedBy:"", submissionTimestamp: "", productName:"", quantity:"", staffName:"", task:"Filleting", startTime:"", endTime:"" }
-  ]);
+  const [rows, setRows] = useState([]);
 
+  // Load saved rows on mount
+  useEffect(()=>{
+    const saved = localStorage.getItem("dailyReportRows");
+    if(saved) setRows(JSON.parse(saved));
+    else setRows([createDayRow()]);
+  }, []);
+
+  // Autosave
   useEffect(()=>{
     localStorage.setItem("dailyReportRows", JSON.stringify(rows));
   }, [rows]);
 
-  useEffect(()=>{
-    const saved = localStorage.getItem("dailyReportRows");
-    if(saved) setRows(JSON.parse(saved));
-  }, []);
+  function createDayRow() {
+    return {
+      rowType:"DAY",
+      date:new Date().toISOString().slice(0,10),
+      totalSales:"",
+      binsGenerated:"",
+      binsDistributed:"",
+      formCompletedBy:"",
+      submissionTimestamp:""
+    }
+  }
+  function createProductRow() { return { rowType:"PRODUCT", productName:"", quantity:"" } }
+  function createStaffRow() { return { rowType:"STAFF", staffName:"", task:"Filleting", startTime:"", endTime:"" } }
+
+  const addRow = (type) => {
+    if(type==="DAY") setRows([...rows, createDayRow()]);
+    else if(type==="PRODUCT") setRows([...rows, createProductRow()]);
+    else if(type==="STAFF") setRows([...rows, createStaffRow()]);
+  }
+
+  const removeRow = (idx) => {
+    if(rows[idx].rowType==="DAY"){
+      const dayCount = rows.filter(r=>r.rowType==="DAY").length;
+      if(dayCount<=1) return; // never remove last day
+    }
+    setRows(rows.filter((_,i)=>i!==idx));
+  }
 
   const submit = async e => {
     e.preventDefault();
@@ -105,15 +134,10 @@ function App() {
 
       setSuccess(true);
       setTimeout(()=>setSuccess(false),10000);
-      setRows([
-        { rowType:"DAY", date:new Date().toISOString().slice(0,10), totalSales:"", binsGenerated:"", binsDistributed:"", formCompletedBy:"", submissionTimestamp: "", productName:"", quantity:"", staffName:"", task:"Filleting", startTime:"", endTime:"" }
-      ]);
+      setRows([createDayRow()]);
 
-    } catch(err) { alert(err.message); } finally { setLoading(false); }
-  };
-
-  const addRow = (type)=>setRows([...rows,{ rowType:type, date:new Date().toISOString().slice(0,10), totalSales:"", binsGenerated:"", binsDistributed:"", formCompletedBy:"", submissionTimestamp: "", productName:"", quantity:"", staffName:"", task:"Filleting", startTime:"", endTime:"" }]);
-  const removeRow = (idx)=>setRows(rows.filter((_,i)=>i!==idx));
+    } catch(err){ alert(err.message); } finally { setLoading(false); }
+  }
 
   if(!configured){
     return (
@@ -142,12 +166,12 @@ function App() {
 
   return (
     <div className="max-w-6xl mx-auto p-0 md:p-0">
-      {/* Header with logo and title */}
-      <header className="w-full bg-kaiBurgundy text-white flex flex-col items-center py-8 shadow-lg mb-8">
+      {/* Header */}
+      <header className="w-full bg-kaiBurgundy text-white flex flex-col items-center py-6 shadow-lg mb-6">
         <img 
-          src="https://raw.githubusercontent.com/bopde/Kai-Ika-report/main/KAI-IKA_log_white-on-trans01.png" 
-          alt="Kai Ika Logo" 
-          className="h-24 mb-4"
+          src="https://raw.githubusercontent.com/bopde/Kai-Ika-report/main/KAI-IKA_log_white-on-trans01.png"
+          alt="Kai Ika Logo"
+          className="h-20 mb-3"
         />
         <h1 className="text-4xl md:text-5xl font-serif font-bold text-center">Kai Ika Daily Report</h1>
       </header>
@@ -161,66 +185,54 @@ function App() {
         </div>
       )}
 
-      <form onSubmit={submit} className="space-y-6 px-4 md:px-8">
+      <form onSubmit={submit} className="space-y-4 px-4 md:px-8">
 
         {rows.map((r,i)=>{
           if(r.rowType==="DAY") return (
-            <div key={i} className="bg-white p-4 rounded-lg shadow-sm mb-4 relative">
-              <span className="absolute top-2 right-2 text-gray-400 cursor-pointer" onClick={()=>removeRow(i)}>✕</span>
-              <div className="grid md:grid-cols-3 gap-4">
-                <input type="date" className="border rounded px-3 py-2 font-sans" value={r.date} onChange={e=>setRows(rows.map((row,j)=>j===i?{...row,date:e.target.value}:row))} />
-                <input type="number" inputMode="decimal" placeholder="Total Sales ($)" className="border rounded px-3 py-2 font-sans" value={r.totalSales} onChange={e=>setRows(rows.map((row,j)=>j===i?{...row,totalSales:e.target.value}:row))} />
-                <input type="number" inputMode="decimal" placeholder="Bins Generated" className="border rounded px-3 py-2 font-sans" value={r.binsGenerated} onChange={e=>setRows(rows.map((row,j)=>j===i?{...row,binsGenerated:e.target.value}:row))} />
-                <input type="number" inputMode="decimal" placeholder="Bins Distributed" className="border rounded px-3 py-2 font-sans" value={r.binsDistributed} onChange={e=>setRows(rows.map((row,j)=>j===i?{...row,binsDistributed:e.target.value}:row))} />
-                <input type="text" placeholder="Form Completed By" className="border rounded px-3 py-2 font-sans" value={r.formCompletedBy} onChange={e=>setRows(rows.map((row,j)=>j===i?{...row,formCompletedBy:e.target.value}:row))} />
+            <div key={i} className="bg-white p-2 rounded-lg shadow-sm mb-2 relative">
+              {rows.filter(r=>r.rowType==="DAY").length>1 &&
+                <span className="absolute -top-2 -right-2 z-10 bg-white text-gray-700 rounded-full w-6 h-6 flex items-center justify-center shadow cursor-pointer text-lg"
+                  onClick={()=>removeRow(i)}>✕</span>}
+              <div className="grid md:grid-cols-3 gap-2">
+                <input type="date" className="border rounded px-2 py-1 font-sans" value={r.date} onChange={e=>setRows(rows.map((row,j)=>j===i?{...row,date:e.target.value}:row))} />
+                <input type="number" inputMode="decimal" placeholder="Total Sales ($)" className="border rounded px-2 py-1 font-sans" value={r.totalSales} onChange={e=>setRows(rows.map((row,j)=>j===i?{...row,totalSales:e.target.value}:row))} />
+                <input type="number" inputMode="decimal" placeholder="Bins Generated" className="border rounded px-2 py-1 font-sans" value={r.binsGenerated} onChange={e=>setRows(rows.map((row,j)=>j===i?{...row,binsGenerated:e.target.value}:row))} />
+                <input type="number" inputMode="decimal" placeholder="Bins Distributed" className="border rounded px-2 py-1 font-sans" value={r.binsDistributed} onChange={e=>setRows(rows.map((row,j)=>j===i?{...row,binsDistributed:e.target.value}:row))} />
+                <input type="text" placeholder="Form Completed By" className="border rounded px-2 py-1 font-sans" value={r.formCompletedBy} onChange={e=>setRows(rows.map((row,j)=>j===i?{...row,formCompletedBy:e.target.value}:row))} />
               </div>
             </div>
           );
           if(r.rowType==="PRODUCT") return (
-            <div key={i} className="bg-kaiYellow/20 p-4 rounded-lg shadow-sm mb-4 relative">
-              <span className="absolute top-2 right-2 text-gray-400 cursor-pointer" onClick={()=>removeRow(i)}>✕</span>
-              <div className="grid md:grid-cols-3 gap-4">
-                <input list="products" placeholder="Product" className="border rounded px-3 py-2 col-span-2 font-sans" value={r.productName} onChange={e=>setRows(rows.map((row,j)=>j===i?{...row,productName:e.target.value}:row))} />
-                <input type="number" inputMode="decimal" placeholder="Quantity" className="border rounded px-3 py-2 font-sans" value={r.quantity} onChange={e=>setRows(rows.map((row,j)=>j===i?{...row,quantity:e.target.value}:row))} />
+            <div key={i} className="bg-kaiYellow/20 p-2 rounded-lg shadow-sm mb-2 relative">
+              <span className="absolute -top-2 -right-2 z-10 bg-white text-gray-700 rounded-full w-6 h-6 flex items-center justify-center shadow cursor-pointer text-lg" onClick={()=>removeRow(i)}>✕</span>
+              <div className="grid md:grid-cols-3 gap-2">
+                <input list="products" placeholder="Product" className="border rounded px-2 py-1 col-span-2 font-sans" value={r.productName} onChange={e=>setRows(rows.map((row,j)=>j===i?{...row,productName:e.target.value}:row))} />
+                <input type="number" inputMode="decimal" placeholder="Quantity" className="border rounded px-2 py-1 font-sans" value={r.quantity} onChange={e=>setRows(rows.map((row,j)=>j===i?{...row,quantity:e.target.value}:row))} />
               </div>
             </div>
           );
           if(r.rowType==="STAFF") return (
-            <div key={i} className="bg-kaiGreen/10 p-4 rounded-lg shadow-sm mb-4 relative">
-              <span className="absolute top-2 right-2 text-gray-400 cursor-pointer" onClick={()=>removeRow(i)}>✕</span>
-              <div className="grid md:grid-cols-4 gap-4">
-                <input list="staff" placeholder="Staff Name" className="border rounded px-3 py-2 font-sans" value={r.staffName} onChange={e=>setRows(rows.map((row,j)=>j===i?{...row,staffName:e.target.value}:row))} />
-                <select className="border rounded px-3 py-2 font-sans" value={r.task} onChange={e=>setRows(rows.map((row,j)=>j===i?{...row,task:e.target.value}:row))}>
+            <div key={i} className="bg-kaiGreen/10 p-2 rounded-lg shadow-sm mb-2 relative">
+              <span className="absolute -top-2 -right-2 z-10 bg-white text-gray-700 rounded-full w-6 h-6 flex items-center justify-center shadow cursor-pointer text-lg" onClick={()=>removeRow(i)}>✕</span>
+              <div className="grid md:grid-cols-4 gap-2">
+                <input list="staff" placeholder="Staff Name" className="border rounded px-2 py-1 font-sans" value={r.staffName} onChange={e=>setRows(rows.map((row,j)=>j===i?{...row,staffName:e.target.value}:row))} />
+                <select className="border rounded px-2 py-1 font-sans" value={r.task} onChange={e=>setRows(rows.map((row,j)=>j===i?{...row,task:e.target.value}:row))}>
                   {TASKS.map(t=><option key={t}>{t}</option>)}
                 </select>
-                <input type="time" className="border rounded px-3 py-2 font-sans" value={r.startTime} onChange={e=>setRows(rows.map((row,j)=>j===i?{...row,startTime:e.target.value}:row))} />
-                <input type="time" className="border rounded px-3 py-2 font-sans" value={r.endTime} onChange={e=>setRows(rows.map((row,j)=>j===i?{...row,endTime:e.target.value}:row))} />
+                <input type="time" className="border rounded px-2 py-1 font-sans" value={r.startTime} onChange={e=>setRows(rows.map((row,j)=>j===i?{...row,startTime:e.target.value}:row))} />
+                <input type="time" className="border rounded px-2 py-1 font-sans" value={r.endTime} onChange={e=>setRows(rows.map((row,j)=>j===i?{...row,endTime:e.target.value}:row))} />
               </div>
             </div>
           );
         })}
 
         {/* Add Row Buttons */}
-        <div className="flex flex-wrap gap-3 mb-6">
-          <button 
-            type="button" 
-            className="bg-kaiBurgundy hover:bg-red-700 text-white px-4 py-2 rounded font-semibold" 
-            onClick={()=>addRow("PRODUCT")}
-          >
-            + Add Product
-          </button>
-          <button 
-            type="button" 
-            className="bg-kaiBurgundy hover:bg-red-700 text-white px-4 py-2 rounded font-semibold" 
-            onClick={()=>addRow("STAFF")}
-          >
-            + Add Staff
-          </button>
+        <div className="flex flex-wrap gap-3 mb-4">
+          <button type="button" className="bg-kaiBurgundy hover:bg-red-700 text-white px-4 py-2 rounded font-semibold" onClick={()=>addRow("PRODUCT")}>+ Add Product</button>
+          <button type="button" className="bg-kaiBurgundy hover:bg-red-700 text-white px-4 py-2 rounded font-semibold" onClick={()=>addRow("STAFF")}>+ Add Staff</button>
         </div>
 
-        <button disabled={loading} type="submit" className="w-full bg-kaiBurgundy hover:bg-red-700 disabled:bg-gray-300 text-white py-3 rounded-lg text-lg font-semibold">
-          {loading ? "Saving…" : "Save Report"}
-        </button>
+        <button disabled={loading} type="submit" className="w-full bg-kaiBurgundy hover:bg-red-700 disabled:bg-gray-300 text-white py-3 rounded-lg text-lg font-semibold">{loading ? "Saving…" : "Save Report"}</button>
 
       </form>
 
