@@ -71,7 +71,7 @@ Users can add multiple product and staff rows as needed.
 
 ---
 
-## How to Use (Layperson Version)
+## How to Use
 
 1. **Initial setup**: On first load, enter the **Google Apps Script Web App URL** and click “Save & Continue.”
 2. **Enter daily data**: The top DAY row is prefilled with today’s date. Fill in total sales, bins, and who completed the form.
@@ -82,7 +82,7 @@ Users can add multiple product and staff rows as needed.
 
 ---
 
-## How to Use (Technical Version)
+## Technical details
 
 * **Front End**:
 
@@ -109,27 +109,9 @@ Users can add multiple product and staff rows as needed.
 
 ---
 
-## Future Improvements (Optional)
-
-* Drag-and-drop row reordering.
-* Auto-summaries of total product quantities or staff hours on the front end.
-* Dark mode toggle.
-* Integration with Google Sheets formulas for additional reporting.
-
----
 
 ## Notes
 
 * Only **Date is required**; other fields can be left empty.
 * Data persists locally in the browser until submitted.
 * Works best in **modern browsers** (Chrome, Edge, Firefox, Safari).
-
----
-
-This README balances **layperson readability** with enough technical detail for someone familiar with React or Apps Script to extend the project.
-
----
-
-If you want, I can also write a **diagram or visual flow** showing **how data flows from input → front end → Apps Script → Google Sheet** — that often makes it super clear for both non-technical and technical folks.
-
-Do you want me to do that?
